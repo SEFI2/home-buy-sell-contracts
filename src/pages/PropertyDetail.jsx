@@ -1,11 +1,17 @@
 import { useParams, Link } from 'react-router-dom';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { FiHome, FiMaximize2, FiCalendar, FiTrendingUp, FiUsers, FiDollarSign, FiGrid } from 'react-icons/fi';
+import { FiHome, FiMaximize2, FiCalendar, FiTrendingUp, FiUsers, FiDollarSign, FiGrid, FiX, FiCheckCircle } from 'react-icons/fi';
 import { FacebookShareButton, TwitterShareButton, LinkedinShareButton } from 'react-share';
 import { FaFacebook, FaTwitter, FaLinkedin, FaEthereum, FaWallet } from 'react-icons/fa';
+import { useWallet } from '../context/WalletContext';
 
 function PropertyDetail() {
   const { id } = useParams();
+  const { account, shortAddress, isConnecting, connect } = useWallet();
+  const [showInvestModal, setShowInvestModal] = useState(false);
+  const [tokenAmount, setTokenAmount] = useState(1);
+  const [invested, setInvested] = useState(false);
 
   const property = {
     id: parseInt(id),
@@ -130,7 +136,7 @@ function PropertyDetail() {
             >
               <h2 className="text-2xl font-bold mb-4">Property Details</h2>
               <p className="text-secondary-600 mb-6">{property.description}</p>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="flex items-center space-x-2">
                   {/* <FiBed className="text-primary-600" /> */}
@@ -280,7 +286,7 @@ function PropertyDetail() {
                   Min Investment: {property.metrics.minInvestment}
                 </p>
               </div>
-              
+
               <Link
                 to={`/property-3d/${id}`}
                 className="btn w-full mb-4 flex items-center justify-center">
@@ -288,11 +294,15 @@ function PropertyDetail() {
                 View 3D Model
               </Link>
 
-              <button className="btn w-full mb-4 flex items-center justify-center">
+              <button
+                className="btn w-full mb-4 flex items-center justify-center"
+                onClick={account ? () => setShowInvestModal(true) : connect}
+                disabled={isConnecting}
+              >
                 <FaWallet className="mr-2" />
-                Connect Wallet to Invest
+                {isConnecting ? 'Connecting...' : account ? 'Invest Now' : 'Connect Wallet to Invest'}
               </button>
-              
+
               <div className="flex items-center justify-center space-x-4 pt-4 border-t">
                 <FacebookShareButton url={shareUrl}>
                   <FaFacebook className="text-2xl text-blue-600 hover:opacity-80" />
@@ -334,7 +344,75 @@ function PropertyDetail() {
           </motion.div>
         </div>
       </div>
-    </div>
+      {
+        showInvestModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4"
+            >
+              {invested ? (
+                <div className="text-center py-4">
+                  <FiCheckCircle className="text-green-500 text-5xl mx-auto mb-4" />
+                  <h3 className="text-xl font-bold mb-2">Investment Successful!</h3>
+                  <p className="text-secondary-600 mb-1">
+                    You purchased <strong>{tokenAmount} {property.tokenDetails.tokenSymbol}</strong> token{tokenAmount > 1 ? 's' : ''}.
+                  </p>
+                  <p className="text-sm text-secondary-500 mb-6">Wallet: {shortAddress}</p>
+                  <button className="btn w-full" onClick={() => { setShowInvestModal(false); setInvested(false); setTokenAmount(1); }}>
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold">Invest in {property.title}</h3>
+                    <button onClick={() => setShowInvestModal(false)} className="text-secondary-400 hover:text-secondary-700">
+                      <FiX size={22} />
+                    </button>
+                  </div>
+                  <p className="text-sm text-secondary-500 mb-4">Connected: <span className="font-mono">{shortAddress}</span></p>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-secondary-700 mb-1">
+                      Number of Tokens ({property.tokenDetails.tokenPrice} each)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={property.tokenDetails.availableTokens}
+                      value={tokenAmount}
+                      onChange={(e) => setTokenAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full border border-secondary-200 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="bg-secondary-50 rounded-lg p-4 mb-6 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-secondary-600">Token Symbol</span>
+                      <span className="font-medium">{property.tokenDetails.tokenSymbol}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-secondary-600">Price per Token</span>
+                      <span className="font-medium">{property.tokenDetails.tokenPrice}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-2">
+                      <span className="font-semibold">Total</span>
+                      <span className="font-bold text-primary-600">${tokenAmount * 10}</span>
+                    </div>
+                  </div>
+                  <button
+                    className="btn w-full"
+                    onClick={() => setInvested(true)}
+                  >
+                    Confirm Investment
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )
+      }
+    </div >
   );
 }
 
