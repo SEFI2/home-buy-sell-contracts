@@ -24,8 +24,6 @@ describe('Factory', () => {
     factory = await Factory.deploy();
   });
 
-  // ─── create ───────────────────────────────────────────────────────────────
-
   describe('create', () => {
     it('deploys a HomeTransaction and appends it to the list', async () => {
       await createViaFactory();
@@ -88,12 +86,9 @@ describe('Factory', () => {
     });
   });
 
-  // ─── getInstance ─────────────────────────────────────────────────────────
-
   describe('getInstance', () => {
     it('returns the correct contract at a given index', async () => {
-      const tx = await createViaFactory();
-      const receipt = await tx.wait();
+      await createViaFactory();
       const count = await factory.getInstanceCount();
       expect(count).to.equal(1);
 
@@ -108,8 +103,6 @@ describe('Factory', () => {
       await expect(factory.getInstance(1)).to.be.revertedWith('index out of range');
     });
   });
-
-  // ─── getInstances ─────────────────────────────────────────────────────────
 
   describe('getInstances', () => {
     it('returns an empty array when no contracts exist', async () => {
@@ -136,8 +129,6 @@ describe('Factory', () => {
       }
     });
   });
-
-  // ─── getInstanceCount ─────────────────────────────────────────────────────
 
   describe('getInstanceCount', () => {
     it('returns 0 when no contracts exist', async () => {

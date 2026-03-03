@@ -1,7 +1,6 @@
 const { expect } = require('chai');
 const { ethers } = require('hardhat');
 
-// Helpers
 const eth = (n) => ethers.utils.parseEther(String(n));
 const State = { WaitingSellerSignature: 0, WaitingBuyerSignature: 1, WaitingRealtorReview: 2, WaitingFinalization: 3, Finalized: 4, Rejected: 5 };
 
@@ -9,9 +8,9 @@ describe('HomeTransaction', () => {
   let contract;
   let realtor, seller, buyer, stranger;
 
-  const PRICE = eth('1');           // 1 ETH
-  const REALTOR_FEE = eth('0.05'); // 5%
-  const DEPOSIT = eth('0.1');      // 10% — minimum valid deposit
+  const PRICE = eth('1');
+  const REALTOR_FEE = eth('0.05');
+  const DEPOSIT = eth('0.1');
 
   async function deploy(price = PRICE, fee = REALTOR_FEE) {
     const Factory = await ethers.getContractFactory('HomeTransaction');
@@ -26,8 +25,6 @@ describe('HomeTransaction', () => {
     [realtor, seller, buyer, stranger] = await ethers.getSigners();
     contract = await deploy();
   });
-
-  // ─── Constructor ────────────────────────────────────────────────────────────
 
   describe('constructor', () => {
     it('sets all roles and details correctly', async () => {
@@ -51,12 +48,12 @@ describe('HomeTransaction', () => {
       );
     });
 
-    it('allows realtorFee equal to price', async () => {
-      await expect(deploy(eth('1'), eth('1'))).to.not.be.reverted;
+    it('rejects realtorFee that exceeds the minimum deposit', async () => {
+      await expect(deploy(eth('1'), eth('1'))).to.be.revertedWith(
+        'Realtor fee cannot exceed the minimum deposit amount'
+      );
     });
   });
-
-  // ─── sellerSignContract ──────────────────────────────────────────────────────
 
   describe('sellerSignContract', () => {
     it('transitions state to WaitingBuyerSignature', async () => {
@@ -77,14 +74,12 @@ describe('HomeTransaction', () => {
     });
 
     it('reverts when called in the wrong state', async () => {
-      await contract.connect(seller).sellerSignContract(); // now WaitingBuyerSignature
+      await contract.connect(seller).sellerSignContract();
       await expect(contract.connect(seller).sellerSignContract()).to.be.revertedWith(
         'Wrong contract state'
       );
     });
   });
-
-  // ─── buyerSignContractAndPayDeposit ─────────────────────────────────────────
 
   describe('buyerSignContractAndPayDeposit', () => {
     beforeEach(async () => {
@@ -136,8 +131,6 @@ describe('HomeTransaction', () => {
     });
   });
 
-  // ─── realtorReviewedClosingConditions ───────────────────────────────────────
-
   describe('realtorReviewedClosingConditions', () => {
     beforeEach(async () => {
       await contract.connect(seller).sellerSignContract();
@@ -149,13 +142,16 @@ describe('HomeTransaction', () => {
       expect(await contract.contractState()).to.equal(State.WaitingFinalization);
     });
 
-    it('rejected: transitions to Rejected and refunds deposit to buyer', async () => {
-      const balanceBefore = await buyer.getBalance();
+    it('rejected: transitions to Rejected, refunds deposit minus fee to buyer, pays realtor', async () => {
+      const buyerBefore   = await buyer.getBalance();
+      const realtorBefore = await realtor.getBalance();
       await contract.connect(realtor).realtorReviewedClosingConditions(false);
 
       expect(await contract.contractState()).to.equal(State.Rejected);
-      const balanceAfter = await buyer.getBalance();
-      expect(balanceAfter.sub(balanceBefore)).to.be.closeTo(DEPOSIT, eth('0.01'));
+      const buyerAfter   = await buyer.getBalance();
+      const realtorAfter = await realtor.getBalance();
+      expect(buyerAfter.sub(buyerBefore)).to.be.closeTo(DEPOSIT.sub(REALTOR_FEE), eth('0.01'));
+      expect(realtorAfter.sub(realtorBefore)).to.be.closeTo(REALTOR_FEE, eth('0.01'));
     });
 
     it('reverts when called by non-realtor', async () => {
@@ -175,10 +171,8 @@ describe('HomeTransaction', () => {
     });
   });
 
-  // ─── buyerFinalizeTransaction ────────────────────────────────────────────────
-
   describe('buyerFinalizeTransaction', () => {
-    const remaining = PRICE.sub(DEPOSIT); // 0.9 ETH
+    const remaining = PRICE.sub(DEPOSIT);
 
     beforeEach(async () => {
       await contract.connect(seller).sellerSignContract();
@@ -192,13 +186,13 @@ describe('HomeTransaction', () => {
     });
 
     it('pays seller (price - realtorFee) and realtor their fee', async () => {
-      const sellerBefore = await seller.getBalance();
+      const sellerBefore  = await seller.getBalance();
       const realtorBefore = await realtor.getBalance();
 
       const tx = await contract.connect(buyer).buyerFinalizeTransaction({ value: remaining });
       await tx.wait();
 
-      const sellerAfter = await seller.getBalance();
+      const sellerAfter  = await seller.getBalance();
       const realtorAfter = await realtor.getBalance();
 
       expect(sellerAfter.sub(sellerBefore)).to.equal(PRICE.sub(REALTOR_FEE));
@@ -225,8 +219,6 @@ describe('HomeTransaction', () => {
     });
   });
 
-  // ─── anyWithdrawFromTransaction ─────────────────────────────────────────────
-
   describe('anyWithdrawFromTransaction', () => {
     beforeEach(async () => {
       await contract.connect(seller).sellerSignContract();
@@ -235,21 +227,19 @@ describe('HomeTransaction', () => {
     });
 
     it('buyer can withdraw before deadline', async () => {
-      const sellerBefore = await seller.getBalance();
+      const sellerBefore  = await seller.getBalance();
       const realtorBefore = await realtor.getBalance();
 
       await contract.connect(buyer).anyWithdrawFromTransaction();
       expect(await contract.contractState()).to.equal(State.Rejected);
 
-      // seller receives deposit - realtorFee; realtor receives realtorFee
-      const sellerAfter = await seller.getBalance();
+      const sellerAfter  = await seller.getBalance();
       const realtorAfter = await realtor.getBalance();
       expect(sellerAfter.sub(sellerBefore)).to.equal(DEPOSIT.sub(REALTOR_FEE));
       expect(realtorAfter.sub(realtorBefore)).to.equal(REALTOR_FEE);
     });
 
     it('anyone can withdraw after the deadline passes', async () => {
-      // Fast-forward past 5-minute deadline
       await ethers.provider.send('evm_increaseTime', [6 * 60]);
       await ethers.provider.send('evm_mine', []);
 
@@ -270,8 +260,6 @@ describe('HomeTransaction', () => {
       ).to.be.revertedWith('Wrong contract state');
     });
   });
-
-  // ─── Full happy-path walkthrough ─────────────────────────────────────────────
 
   describe('full happy-path', () => {
     it('completes a transaction end-to-end', async () => {

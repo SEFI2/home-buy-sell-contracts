@@ -1,7 +1,6 @@
 pragma solidity >=0.4.25 <0.6.0;
 
 contract HomeTransaction {
-    // Constants
     uint constant timeBetweenDepositAndFinalization = 5 minutes;
     uint constant depositPercentage = 10;
 
@@ -14,24 +13,19 @@ contract HomeTransaction {
         Rejected }
     ContractState public contractState = ContractState.WaitingSellerSignature;
 
-
-    // Roles acting on contract
     address payable public realtor;
     address payable public seller;
     address payable public buyer;
 
-    // Contract details
     string public homeAddress;
     string public zip;
     string public city;
     uint public realtorFee;
     uint public price;
 
-    // Set when buyer signs and pays deposit
     uint public deposit;
     uint public finalizeDeadline;
 
-    // Set when realtor reviews closing conditions
     enum ClosingConditionsReview { Pending, Accepted, Rejected }
     ClosingConditionsReview closingConditionsReview = ClosingConditionsReview.Pending;
 
@@ -45,6 +39,8 @@ contract HomeTransaction {
         address payable _seller,
         address payable _buyer) public {
         require(_price >= _realtorFee, "Price needs to be more than realtor fee!");
+        require(_realtorFee * 100 <= _price * depositPercentage,
+            "Realtor fee cannot exceed the minimum deposit amount");
 
         realtor = _realtor;
         seller = _seller;
@@ -69,7 +65,7 @@ contract HomeTransaction {
 
         require(contractState == ContractState.WaitingBuyerSignature, "Wrong contract state");
 
-        require(msg.value >= price*depositPercentage/100 && msg.value <= price, "Buyer needs to deposit between 10% and 100% to sign contract");
+        require(msg.value * 100 >= price * depositPercentage && msg.value <= price, "Buyer needs to deposit between 10% and 100% to sign contract");
 
         contractState = ContractState.WaitingRealtorReview;
 
@@ -89,7 +85,8 @@ contract HomeTransaction {
             closingConditionsReview = ClosingConditionsReview.Rejected;
             contractState = ContractState.Rejected;
 
-            buyer.transfer(deposit);
+            buyer.transfer(deposit - realtorFee);
+            realtor.transfer(realtorFee);
         }
     }
 
